@@ -222,32 +222,40 @@ function tpac_connect_to_vc(inter: ChatInputCommandInteraction<CacheType>, vc: V
     return ctx;
 }
 
-export async function tpac_singasong(inter: ChatInputCommandInteraction<CacheType>, client: Client, song: string) {
-
+function tpac_find_vc(inter: ChatInputCommandInteraction<CacheType>, client: Client, check_joinable: boolean = false): VoiceBasedChannel | null {
     let guild = client.guilds.cache.get(inter.guildId!);
     if (!guild) {
         inter.reply("Internal error, try again.");
         console.error("Failed to get calling guild!");
-        return;
+        return null;
     }
 
     let member = guild?.members.cache.get(inter.member?.user.id!);
     if (!member) {
         console.error("Failed to get calling member info!");
         inter.reply("Internal error, try again.");
-        return;
+        return null;
     }
 
     let vc = member.voice.channel;
     if (!vc) {
         inter.reply("Your bitch ass is not in a voice channel");
-        return
+        return null;
     }
 
-    if (!vc.joinable) {
+    if (check_joinable && !vc.joinable) {
         inter.reply("Can't join this voice channel");
-        return;
+        return null;
     }
+
+    return vc;
+}
+
+export async function tpac_singasong(inter: ChatInputCommandInteraction<CacheType>, client: Client, song: string) {
+
+    const vc = tpac_find_vc(inter, client, true);
+    if (!vc)
+        return;
 
     let ctx: StreamContext | undefined;
     if (getVoiceConnection(vc.guild.id) === undefined)
@@ -267,25 +275,9 @@ export async function tpac_singasong(inter: ChatInputCommandInteraction<CacheTyp
 }
 
 export async function tpac_leave(inter: ChatInputCommandInteraction<CacheType>, client: Client) {
-    let guild = client.guilds.cache.get(inter.guildId!);
-    if (!guild) {
-        inter.reply("Internal error, try again.");
-        console.error("Failed to get calling guild!");
+    const vc = tpac_find_vc(inter, client, true);
+    if (!vc)
         return;
-    }
-
-    let member = guild?.members.cache.get(inter.member?.user.id!);
-    if (!member) {
-        console.error("Failed to get calling member info!");
-        inter.reply("Internal error, try again.");
-        return;
-    }
-
-    let vc = member.voice.channel;
-    if (!vc) {
-        inter.reply("Your bitch ass is not in a voice channel");
-        return
-    }
 
     let ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
     if (!ctx) {
@@ -297,4 +289,20 @@ export async function tpac_leave(inter: ChatInputCommandInteraction<CacheType>, 
     ctx.player.emit("idle");
 
     inter.reply("13.09.1996");
+}
+
+
+export async function tpac_skip_one(inter: ChatInputCommandInteraction<CacheType>, client: Client) {
+    const vc = tpac_find_vc(inter, client, true);
+    if (!vc)
+        return;
+
+    let ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
+    if (!ctx) {
+        inter.reply("You are not in the same vc.");
+        return;
+    }
+
+    inter.reply("Skipped");
+    ctx.player.emit("idle");
 }

@@ -1,8 +1,8 @@
 
 import { ActivityType, Client, GatewayIntentBits } from 'discord.js';
 import { DISCORD_TOKEN } from './environ';
-import { TPAC_COMMAND_LEAVE, TPAC_COMMAND_PLAYSONG, tpac_register_commands } from './commands';
-import { tpac_leave, tpac_singasong } from "./sing";
+import { TPAC_COMMAND_LEAVE, TPAC_COMMAND_PLAYSONG, TPAC_COMMAND_SKIP, tpac_register_commands } from './commands';
+import { tpac_leave, tpac_singasong, tpac_skip_one } from "./sing";
 import { exit } from 'process';
 
 const client = new Client(
@@ -50,23 +50,30 @@ async function main() {
     client.on('interactionCreate', async interaction => {
         if (!interaction.isChatInputCommand()) return;
 
-        if (interaction.commandName === TPAC_COMMAND_PLAYSONG) {
-            const song = interaction.options.getString("song");
-            if (!song) {
-                interaction.reply("2pac error no song given!");
-                return;
-            }
+        switch (interaction.commandName) {
+            case TPAC_COMMAND_PLAYSONG:
+                const song = interaction.options.getString("song");
+                if (!song) {
+                    interaction.reply("No song was given!");
+                    break;
+                }
 
-            tpac_singasong(interaction, client, song);
-            return;
+                tpac_singasong(interaction, client, song);
+                break;
+
+            case TPAC_COMMAND_LEAVE:
+                tpac_leave(interaction, client);
+                break;
+
+            case TPAC_COMMAND_SKIP:
+                tpac_skip_one(interaction, client);
+                break;
+
+            default:
+                interaction.reply("Unhandled interaction!");
+                break;
         }
 
-        if (interaction.commandName === TPAC_COMMAND_LEAVE) {
-            tpac_leave(interaction, client);
-            return;
-        }
-
-        interaction.reply("Unhandled interaction, contact the nigga who wrote this");
     });
 
     client.login(DISCORD_TOKEN);
