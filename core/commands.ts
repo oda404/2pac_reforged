@@ -3,34 +3,25 @@ import { DISCORD_TOKEN, DISCORD_CLIENT_ID } from "./environ";
 import { exit } from "process";
 
 export const TPAC_COMMAND_PLAYSONG = "singasong";
+export const TPAC_COMMAND_LEAVE = "leave";
 
 const commands = [
     {
         name: TPAC_COMMAND_PLAYSONG,
-        description: 'sing a song',
+        description: 'Join the caller\'s vc and play a song.',
         options: [
             {
                 name: 'song',
-                description: 'song to play',
+                description: 'YouTube URL/YouTube search',
                 type: 3,
                 required: 'true'
-            },
-            {
-                name: 'stable',
-                description: 'Use stable playback. May take longer to start playing.',
-                type: 5,
-                required: 'false'
             }
         ],
     },
     {
-        name: 'pause',
-        description: 'pause the current song',
-    },
-    {
-        name: 'resume',
-        description: 'resume the paused song',
-    },
+        name: TPAC_COMMAND_LEAVE,
+        description: 'Stop playing and leave the vc.',
+    }
 ];
 
 export async function tpac_register_commands() {

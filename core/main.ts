@@ -1,8 +1,8 @@
 
-import { Client, GatewayIntentBits } from 'discord.js';
+import { ActivityType, Client, GatewayIntentBits } from 'discord.js';
 import { DISCORD_TOKEN } from './environ';
-import { TPAC_COMMAND_PLAYSONG, tpac_register_commands } from './commands';
-import { tpac_singasong } from "./sing";
+import { TPAC_COMMAND_LEAVE, TPAC_COMMAND_PLAYSONG, tpac_register_commands } from './commands';
+import { tpac_leave, tpac_singasong } from "./sing";
 import { exit } from 'process';
 
 const client = new Client(
@@ -24,6 +24,27 @@ async function main() {
 
     client.on('ready', () => {
         console.log(`Logged in as ${client!.user!.tag}!`);
+
+        if (process.env.NODE_ENV === "dev") {
+            client.user?.setPresence({
+                activities: [
+                    {
+                        type: ActivityType.Custom,
+                        name: "Running in dev mode",
+                    }
+                ],
+                status: "idle"
+            });
+        }
+        else {
+            client.user?.setPresence({
+                activities: [{
+                    type: ActivityType.Custom,
+                    name: `Running on 2pac-${process.env.npm_package_version}`
+                }],
+                status: "online"
+            });
+        }
     });
 
     client.on('interactionCreate', async interaction => {
@@ -36,10 +57,12 @@ async function main() {
                 return;
             }
 
-            let stable = interaction.options.getBoolean("stable");
-            // if (stable === null)
-            stable = true;
-            tpac_singasong(interaction, client, song, stable);
+            tpac_singasong(interaction, client, song);
+            return;
+        }
+
+        if (interaction.commandName === TPAC_COMMAND_LEAVE) {
+            tpac_leave(interaction, client);
             return;
         }
 
@@ -47,8 +70,6 @@ async function main() {
     });
 
     client.login(DISCORD_TOKEN);
-
-    client.destroy()
 }
 
 main();

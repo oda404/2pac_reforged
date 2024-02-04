@@ -1,4 +1,5 @@
 {
+    "version": "1.0.0",
     "license": "MIT",
     "devDependencies": {
         "@types/node": "^18.7.7",
@@ -9,8 +10,8 @@
     "scripts": {
         "compile": "tsc",
         "start": "node dist/core/main.js",
-        "server": "yarn run compile && yarn run start",
-        "dev": "nodemon --ignore node_modules --ignore dist --ext ts --exec yarn run server ./"
+        "compile-run": "yarn run compile && yarn run start",
+        "dev": "NODE_ENV=dev nodemon --ignore node_modules --ignore dist --ext ts --exec yarn run compile-run ./"
     },
     "dependencies": {
         "@discordjs/voice": "^0.16.0",
