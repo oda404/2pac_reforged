@@ -44,10 +44,17 @@ async function tpac_stream_yt(url: string, ctx: StreamContext) {
     const cache_name = make_song_cache_path(ctx.guild_id);
 
     const ws = createWriteStream(cache_name);
+    let total_size = 0;
 
     /* Why don't i stream it directly? Because it fails randomly :) */
     ytdl(url, { filter: 'audioonly' })
         .on("data", (chunk) => {
+            total_size += chunk.length;
+
+            /* No more than 100MiB */
+            if (total_size > 1024 * 1024 * 100)
+                return; // Idk how to end the stream.
+
             ws.write(chunk);
         })
         .on("error", (err) => {
