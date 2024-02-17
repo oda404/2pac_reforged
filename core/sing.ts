@@ -8,9 +8,10 @@ import {
     VoiceConnectionStatus
 } from "@discordjs/voice";
 import ytdl from "@distube/ytdl-core";
-import { CacheType, ChatInputCommandInteraction, Client, VoiceBasedChannel } from "discord.js";
+import {CacheType, ChatInputCommandInteraction, Client, VoiceBasedChannel} from "discord.js";
 const youtubesearchapi = require("youtube-search-api");
-import { createWriteStream, existsSync, mkdirSync } from "fs";
+import {createWriteStream, statSync, mkdirSync, Stats} from "fs";
+import {exit} from "process";
 
 interface StreamInfo {
     url: string;
@@ -39,8 +40,33 @@ const is_yt_link = (str: string) => str.match(/^(https:\/\/)?(www.)?youtube.com/
 const song_cache_dir = "cache.songs";
 const make_song_cache_path = (guild_id: string) => `${song_cache_dir}/guild_${guild_id}.mp3`;
 
+function ensure_song_cache_path() {
+
+    let stat_res: Stats;
+
+    try {
+        stat_res = statSync(song_cache_dir);
+    } catch (e) {
+        try {
+            mkdirSync(song_cache_dir);
+        } catch (e1) {
+            console.error(`Failed to create song cache directory: ${e1}`);
+            exit(1);
+        }
+        return;
+    }
+
+    if (!stat_res.isDirectory()) {
+        console.error(`The song cache path '${song_cache_dir}' is not a directory!`);
+        exit(1);
+    }
+
+    // FIXME: maybe check for permissions?
+}
+
 async function tpac_stream_yt(url: string, ctx: StreamContext) {
 
+    ensure_song_cache_path();
     const cache_name = make_song_cache_path(ctx.guild_id);
 
     const ws = createWriteStream(cache_name);
