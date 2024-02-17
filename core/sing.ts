@@ -73,7 +73,7 @@ async function tpac_stream_yt(url: string, ctx: StreamContext) {
     let total_size = 0;
 
     /* Why don't i stream it directly? Because it fails randomly :) */
-    ytdl(url, { filter: 'audioonly' })
+    ytdl(url, {filter: 'audioonly'})
         .on("data", (chunk) => {
             total_size += chunk.length;
 
@@ -134,20 +134,20 @@ async function tpac_queue_yt_playlist(playlist_id: string, ctx: StreamContext): 
     try {
         playlist_data = await youtubesearchapi.GetPlaylistData(playlist_id);
     } catch (e) {
-        return { message: "Invalid playlist, idk what this means, it can't be done.", streams_queued: 0 };
+        return {message: "Invalid playlist, idk what this means, it can't be done.", streams_queued: 0};
     }
 
     if (playlist_data.items.length === 0)
-        return { message: "Playlist is empty!", streams_queued: 0 };
+        return {message: "Playlist is empty!", streams_queued: 0};
 
     let title: string | null = playlist_data.metadata.playlistMetadataRenderer.title;
 
     const requestn = ctx.last_queue_request++;
     playlist_data.items.forEach((video: any) => {
-        ctx.queue.push({ type: "yt", url: `https://youtube.com/watch?v=${video.id}`, request: requestn });
+        ctx.queue.push({type: "yt", url: `https://youtube.com/watch?v=${video.id}`, request: requestn});
     });
 
-    return { message: `Playing playlist [${title !== null ? title : "???"}] with ${playlist_data.items.length} songs`, streams_queued: playlist_data.items.length };
+    return {message: `Playing playlist [${title !== null ? title : "???"}] with ${playlist_data.items.length} songs`, streams_queued: playlist_data.items.length};
 }
 
 async function play_song_impl(ctx: StreamContext, song: string): Promise<string> {
@@ -171,7 +171,7 @@ async function play_song_impl(ctx: StreamContext, song: string): Promise<string>
         else {
             // Simple video
             info = "Playing video";
-            ctx.queue.push({ url: song, type: "yt", request: ctx.last_queue_request++ });
+            ctx.queue.push({url: song, type: "yt", request: ctx.last_queue_request++});
         }
     }
     else {
@@ -190,7 +190,7 @@ async function play_song_impl(ctx: StreamContext, song: string): Promise<string>
 
             case "video":
                 info = `Playing [${res.items[0].title}]`;
-                ctx.queue.push({ type: "yt", url: `https://youtube.com/watch?v=${res.items[0].id}`, request: ctx.last_queue_request++ });
+                ctx.queue.push({type: "yt", url: `https://youtube.com/watch?v=${res.items[0].id}`, request: ctx.last_queue_request++});
                 break;
 
             default:
@@ -199,7 +199,9 @@ async function play_song_impl(ctx: StreamContext, song: string): Promise<string>
         }
     }
 
-    tpac_stream_next_queued(ctx, true);
+    if (ctx.current_request === -1)
+        tpac_stream_next_queued(ctx, true);
+
     return info;
 }
 
@@ -227,10 +229,13 @@ function tpac_connect_to_vc(inter: ChatInputCommandInteraction<CacheType>, vc: V
             ctx.error = undefined;
         }
 
-        if (ctx.queue.length === 0)
+        if (ctx.queue.length === 0) {
             connection?.disconnect();
-        else
+            ctx.current_request = -1;
+        }
+        else {
             tpac_stream_next_queued(ctx);
+        }
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
@@ -294,15 +299,13 @@ export async function tpac_singasong(inter: ChatInputCommandInteraction<CacheTyp
     if (getVoiceConnection(vc.guild.id) === undefined)
         ctx = tpac_connect_to_vc(inter, vc);
     else
-        ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
+        ctx = sing_contexts.find((c) => {return c.guild_id === vc!.guildId && c.vc_id === vc!.id});
 
     if (!ctx) {
         inter.reply("Internal error, try again.");
         console.error("Failed to get a valid stream context!");
         return;
     }
-
-    console.log(`${sing_contexts.length}`)
 
     inter.reply(await play_song_impl(ctx, song));
 }
@@ -312,7 +315,7 @@ export async function tpac_leave(inter: ChatInputCommandInteraction<CacheType>, 
     if (!vc)
         return;
 
-    let ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
+    let ctx = sing_contexts.find((c) => {return c.guild_id === vc!.guildId && c.vc_id === vc!.id});
     if (!ctx) {
         inter.reply("You are not in the same vc.");
         return;
@@ -330,7 +333,7 @@ export async function tpac_skip_one(inter: ChatInputCommandInteraction<CacheType
     if (!vc)
         return;
 
-    let ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
+    let ctx = sing_contexts.find((c) => {return c.guild_id === vc!.guildId && c.vc_id === vc!.id});
     if (!ctx) {
         inter.reply("You are not in the same vc.");
         return;
