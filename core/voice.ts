@@ -5,13 +5,14 @@ import {
     createAudioResource,
     getVoiceConnection,
     joinVoiceChannel,
+    VoiceConnection,
     VoiceConnectionStatus
 } from "@discordjs/voice";
 import ytdl from "@distube/ytdl-core";
-import {CacheType, ChatInputCommandInteraction, Client, VoiceBasedChannel} from "discord.js";
+import { CacheType, ChatInputCommandInteraction, Client, VoiceBasedChannel } from "discord.js";
 const youtubesearchapi = require("youtube-search-api");
-import {createWriteStream, statSync, mkdirSync, Stats} from "fs";
-import {exit} from "process";
+import { createWriteStream, statSync, mkdirSync, Stats } from "fs";
+import { exit } from "process";
 
 interface StreamInfo {
     url: string;
@@ -27,6 +28,8 @@ interface StreamContext {
     last_queue_request: number;
     current_request: number;
     error?: string;
+    connection: VoiceConnection;
+    yapper_list: string[];
 };
 
 interface PlaylistResponse {
@@ -73,7 +76,7 @@ async function tpac_stream_yt(url: string, ctx: StreamContext) {
     let total_size = 0;
 
     /* Why don't i stream it directly? Because it fails randomly :) */
-    ytdl(url, {filter: 'audioonly'})
+    ytdl(url, { filter: 'audioonly' })
         .on("data", (chunk) => {
             total_size += chunk.length;
 
@@ -134,20 +137,20 @@ async function tpac_queue_yt_playlist(playlist_id: string, ctx: StreamContext): 
     try {
         playlist_data = await youtubesearchapi.GetPlaylistData(playlist_id);
     } catch (e) {
-        return {message: "Invalid playlist, idk what this means, it can't be done.", streams_queued: 0};
+        return { message: "Invalid playlist, idk what this means, it can't be done.", streams_queued: 0 };
     }
 
     if (playlist_data.items.length === 0)
-        return {message: "Playlist is empty!", streams_queued: 0};
+        return { message: "Playlist is empty!", streams_queued: 0 };
 
     let title: string | null = playlist_data.metadata.playlistMetadataRenderer.title;
 
     const requestn = ctx.last_queue_request++;
     playlist_data.items.forEach((video: any) => {
-        ctx.queue.push({type: "yt", url: `https://youtube.com/watch?v=${video.id}`, request: requestn});
+        ctx.queue.push({ type: "yt", url: `https://youtube.com/watch?v=${video.id}`, request: requestn });
     });
 
-    return {message: `Playing playlist [${title !== null ? title : "???"}] with ${playlist_data.items.length} songs`, streams_queued: playlist_data.items.length};
+    return { message: `Queued playlist **${title !== null ? title : "???"}** with ${playlist_data.items.length} songs`, streams_queued: playlist_data.items.length };
 }
 
 async function play_song_impl(ctx: StreamContext, song: string): Promise<string> {
@@ -170,18 +173,22 @@ async function play_song_impl(ctx: StreamContext, song: string): Promise<string>
         }
         else {
             // Simple video
-            info = "Playing video";
-            ctx.queue.push({url: song, type: "yt", request: ctx.last_queue_request++});
+            info = "Queued **URL**";
+            ctx.queue.push({ url: song, type: "yt", request: ctx.last_queue_request++ });
         }
     }
     else {
-        const res = await youtubesearchapi.GetListByKeyword(song, true, 1);
+        const res = await youtubesearchapi.GetListByKeyword(song, true, 3);
         if (res.items.length === 0)
             return "No videos were found!";
 
-        switch (res.items[0].type) {
+        let idx = 0;
+        while (res.items.length - 1 > idx && res.items[idx].type === "channel")
+            ++idx;
+
+        switch (res.items[idx].type) {
             case "playlist":
-                let response = await tpac_queue_yt_playlist(res.items[0].id, ctx);
+                let response = await tpac_queue_yt_playlist(res.items[idx].id, ctx);
                 info = response.message;
                 if (response.streams_queued === 0)
                     return info;
@@ -189,13 +196,12 @@ async function play_song_impl(ctx: StreamContext, song: string): Promise<string>
                 break;
 
             case "video":
-                info = `Playing [${res.items[0].title}]`;
-                ctx.queue.push({type: "yt", url: `https://youtube.com/watch?v=${res.items[0].id}`, request: ctx.last_queue_request++});
+                info = `Queued **${res.items[idx].title}**`;
+                ctx.queue.push({ type: "yt", url: `https://youtube.com/watch?v=${res.items[idx].id}`, request: ctx.last_queue_request++ });
                 break;
 
             default:
-                info = "Don't know how to play this video";
-                break;
+                return `Don't know how to play this ${res.items[idx].type}`;
         }
     }
 
@@ -210,7 +216,7 @@ function tpac_connect_to_vc(inter: ChatInputCommandInteraction<CacheType>, vc: V
     let connection = joinVoiceChannel({
         channelId: vc.id,
         guildId: vc.guild.id,
-        adapterCreator: vc.guild.voiceAdapterCreator
+        adapterCreator: vc.guild.voiceAdapterCreator,
     });
 
     const ctx: StreamContext = {
@@ -219,8 +225,11 @@ function tpac_connect_to_vc(inter: ChatInputCommandInteraction<CacheType>, vc: V
         player: createAudioPlayer(),
         queue: [],
         last_queue_request: 0,
-        current_request: -1
+        current_request: -1,
+        connection: connection,
+        yapper_list: []
     };
+
     sing_contexts.push(ctx);
 
     ctx.player.on(AudioPlayerStatus.Idle, async () => {
@@ -229,7 +238,7 @@ function tpac_connect_to_vc(inter: ChatInputCommandInteraction<CacheType>, vc: V
             ctx.error = undefined;
         }
 
-        if (ctx.queue.length === 0) {
+        if (ctx.queue.length === 0 && ctx.yapper_list.length === 0) {
             connection?.disconnect();
             ctx.current_request = -1;
         }
@@ -299,7 +308,7 @@ export async function tpac_singasong(inter: ChatInputCommandInteraction<CacheTyp
     if (getVoiceConnection(vc.guild.id) === undefined)
         ctx = tpac_connect_to_vc(inter, vc);
     else
-        ctx = sing_contexts.find((c) => {return c.guild_id === vc!.guildId && c.vc_id === vc!.id});
+        ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
 
     if (!ctx) {
         inter.reply("Internal error, try again.");
@@ -309,13 +318,12 @@ export async function tpac_singasong(inter: ChatInputCommandInteraction<CacheTyp
 
     inter.reply(await play_song_impl(ctx, song));
 }
-
 export async function tpac_leave(inter: ChatInputCommandInteraction<CacheType>, client: Client) {
     const vc = tpac_find_vc(inter, client, true);
     if (!vc)
         return;
 
-    let ctx = sing_contexts.find((c) => {return c.guild_id === vc!.guildId && c.vc_id === vc!.id});
+    let ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
     if (!ctx) {
         inter.reply("You are not in the same vc.");
         return;
@@ -333,7 +341,7 @@ export async function tpac_skip_one(inter: ChatInputCommandInteraction<CacheType
     if (!vc)
         return;
 
-    let ctx = sing_contexts.find((c) => {return c.guild_id === vc!.guildId && c.vc_id === vc!.id});
+    let ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
     if (!ctx) {
         inter.reply("You are not in the same vc.");
         return;
@@ -341,4 +349,98 @@ export async function tpac_skip_one(inter: ChatInputCommandInteraction<CacheType
 
     inter.reply("Skipped");
     ctx.player.emit("idle");
+}
+
+export async function tpac_yapper_control(inter: ChatInputCommandInteraction<CacheType>, client: Client, who: string) {
+
+    if (client.guilds.cache.get(inter.guild!.id)?.members.cache.find((u) => u.user.username === who) === undefined) {
+        inter.reply(`There's no one named **${who}** in this server!`);
+        return;
+    }
+
+    const vc = tpac_find_vc(inter, client, true);
+    if (!vc)
+        return;
+
+    let ctx: StreamContext | undefined;
+    if (getVoiceConnection(vc.guild.id) === undefined)
+        ctx = tpac_connect_to_vc(inter, vc);
+    else
+        ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
+
+    if (!ctx) {
+        inter.reply("You are not in the same vc.");
+        return;
+    }
+
+    if (ctx.yapper_list.indexOf(who) !== -1) {
+        inter.reply(`The yapping control routine has already been started for **${who}**`);
+        return;
+    }
+
+    if (ctx.connection.joinConfig.selfDeaf) {
+        let conf = ctx.connection.joinConfig;
+        conf.selfDeaf = false;
+        if (!ctx.connection.rejoin(conf)) {
+            inter.reply("Failed to undeafen!");
+            return;
+        }
+    }
+
+    if (ctx.yapper_list.length === 0) {
+        ctx.connection.receiver.speaking.on("end", (user_id) => {
+            let user = client.guilds.cache.get(ctx?.guild_id!)?.members.cache.get(user_id);
+            if (!user)
+                return;
+
+            console.log(user_id);
+
+            if (ctx?.yapper_list.find((val) => val === user!.user.username) !== undefined) {
+                if (user.voice.channelId)
+                    user.voice.disconnect();
+            }
+        });
+    }
+
+    ctx.yapper_list.push(who);
+    inter.reply(`Started the yapping control routine for **${who}**`);
+}
+
+export async function tpac_yapper_control_stop(inter: ChatInputCommandInteraction<CacheType>, client: Client, who: string) {
+    const vc = tpac_find_vc(inter, client, true);
+    if (!vc)
+        return;
+
+    let ctx: StreamContext | undefined;
+    if (getVoiceConnection(vc.guild.id) === undefined)
+        ctx = tpac_connect_to_vc(inter, vc);
+    else
+        ctx = sing_contexts.find((c) => { return c.guild_id === vc!.guildId && c.vc_id === vc!.id });
+
+    if (!ctx) {
+        inter.reply("You are not in the same vc.");
+        return;
+    }
+
+    let yapper_idx = ctx.yapper_list.indexOf(who);
+    if (yapper_idx === -1) {
+        inter.reply(`The yapping control routine hasn't been started for **${who}**`);
+        return;
+    }
+
+    if (inter.user.username === who && who !== "oda6674") {
+        inter.reply("Not happening");
+        return;
+    }
+
+    ctx.yapper_list.splice(yapper_idx, 1);
+    inter.reply(`Stopped the yapping control routine for **${who}**`);
+
+    if (ctx.yapper_list.length === 0) {
+        ctx.connection.receiver.speaking.removeAllListeners();
+
+        let conf = ctx.connection.joinConfig;
+        conf.selfDeaf = true;
+        ctx.connection.rejoin(conf);
+    }
 }
